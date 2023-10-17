@@ -8,17 +8,33 @@
 #include "tdmp/json.lua"
 #include "tdmp/networking.lua"
 
-active = true
+function defaultValues()
+    SetBool('savegame.mod.airstrikeDisableAtMapStart', true)
+    SetInt('savegame.mod.airstrikeRange', 250)
+    SetInt('savegame.mod.airstrikeHeight', 200)
+    SetInt('savegame.mod.airstrikeMaxDistance', 300)
+    SetFloat('savegame.mod.airstrikeDelay', 0.1)
+end
+
+if not (GetBool('savegame.mod.airstrikeDefaultSetup')) then
+    defaultValues()
+    SetBool('savegame.mod.airstrikeDefaultSetup', true)
+end
+active = GetBool('savegame.mod.airstrikeDisableAtMapStart')
 
 next_missle = 0
 next_big_missle = 0
 
-delay = 0.05
+delay = 0.1
 delay_big = 10;
 amount = 1
 
 maxMissiles = 20
-maxRange = 100
+startHeight = GetInt("savegame.mod.airstrikeHeight")
+maxRange = startHeight
+
+strikeRange =  GetInt("savegame.mod.airstrikeRange")
+
 local missiles = {}
 
 function shoot_missile(pos, dir, big)
@@ -49,8 +65,16 @@ function trail(p, b)
 end
 
 function init()
-   
+    strikeRange = 250 or GetInt("savegame.mod.airstrikeRange")
+    if (strikeRange == 0) then
+        strikeRange = 300
+        SetInt("savegame.mod.airstrikeRange", 300)
+    end
+
+    active = GetBool('savegame.mod.airstrikeDisableAtMapStart')
+
 end
+
 if (TDMP_LocalSteamID) then
     TDMP_RegisterEvent("nexp", function(data, sender)
         local unpacked = json.decode(data)
@@ -108,7 +132,7 @@ function missile_tick()
 
         m[3] = m[3] + VecLength(m[1])
 
-        if (m[3] > maxRange) then
+        if (m[3] > GetInt('savegame.mod.airstrikeHeight')) then
             table.remove(missiles,_)
             m = nil
 
@@ -136,6 +160,7 @@ function missile_tick()
         end
     end
 end
+
 function airstrike(l,w)
     if TDMP_LocalSteamID and (not TDMP_IsServer()) then
         return
@@ -148,9 +173,9 @@ function airstrike(l,w)
     if (GetTime() < next_missle) then
         return;
     end
-    next_missle = GetTime() + delay
+    next_missle = GetTime() + GetFloat("savegame.mod.airstrikeDelay")
     for i=0, amount do
-        local pos = Vec(math.random(-w,w),100,math.random(-l,l))
+        local pos = Vec(math.random(-w,w),GetInt("savegame.mod.airstrikeHeight"),math.random(-l,l))
         --Shoot(pos,Vec(0, -1, 0),1)
         if (TDMP_LocalSteamID) then 
             NetworkedMissile(pos, Vec(0, -1, 0), false )
@@ -166,7 +191,7 @@ function airstrike_big(l,w)
         return;
     end
     next_big_missle = GetTime() + delay_big
-    local pos = Vec(math.random(-w,w),100,math.random(-l,l))
+    local pos = Vec(math.random(-w,w),GetInt("savegame.mod.airstrikeHeight"),math.random(-l,l))
     if (TDMP_LocalSteamID) then
         NetworkedMissile(pos, Vec(0, -1, 0), true)
     else
@@ -177,20 +202,143 @@ end
 function init()
 end
 
+menuActive = false
+
 function tick(dt)
-    if PauseMenuButton( "Airstrike Toggle", true) then
-		active = not active;
+    if PauseMenuButton( "Airstrike Options") then
+        menuActive = not menuActive
 	end
-    airstrike(100,100);
+    --[[if PauseMenuButton( "Airstrike Toggle") then
+		active = not active;
+	end--]]
+
+    airstrike(GetInt("savegame.mod.airstrikeRange"),GetInt("savegame.mod.airstrikeRange"));
     missile_tick();
 end
 
 
 function update(dt)
 end
+function drawbutton(text,f)
 
+    local sx,sy = UiGetTextSize(text)
+    b = UiImageBox('ui/common/box-outline-4.png', sx,-sy/2,2,2) or UiTextButton(text,sx,sy) 
+
+    sy = sy * 0.5
+
+    UiTranslate(sx,-sy)---sy)
+
+
+    --[[b = b or UiBlankButton(sy,sy)
+    UiRect(sy,sy)]]
+
+    UiTranslate(-sx,sy)--,sy)
+    UiTranslate(0,24)
+    if b then
+        f()
+    end
+end
+
+function drawBoolButton(text, str)
+    UiColor(1,0,0,1)
+    if (GetBool(str)) then
+        UiColor(0,1,0,1)
+    end
+    drawbutton(text, function()
+        SetBool(str, not GetBool(str))
+    end)
+end
+
+function defaultValues()
+    SetBool('savegame.mod.airstrikeDisableAtMapStart', true)
+    SetInt('savegame.mod.airstrikeRange', 250)
+    SetInt('savegame.mod.airstrikeHeight', 200)
+    SetInt('savegame.mod.airstrikeMaxDistance', 300)
+end
+local dbgMenuWidth = 620
+local dbgMenuHeight = 500
+function drawSlider(text, key, axis, min, max, default)
+    local sx,sy = UiGetTextSize(text)
+    sy = sy * 0.5
+    UiTranslate(0,sy)
+    UiColor(1,1,1)
+    UiText(text)
+    UiTranslate(sx,0)
+    UiColor(0,1,0)
+    UiText(GetInt(key, max / 2))
+    UiTranslate(-sx,0)
+    UiTranslate(0,sy)
+    UiColor(1,1,1)
+    UiImageBox('ui/common/box-outline-4.png', (max - min + 20),20,2,2)
+    UiTranslate(-min)
+    value, done = UiSlider("ui/common/dot.png", axis, GetInt(key) or default, min, max)
+    SetInt(key, value)
+    UiTranslate(0,sy + 20 + 10)
+    UiTranslate(min)
+end
+function drawSliderFloat(text, key, axis, min, max, default)
+    local sx,sy = UiGetTextSize(text)
+    sy = sy * 0.5
+    UiTranslate(0,sy)
+    UiColor(1,1,1)
+    UiText(text)
+    UiTranslate(sx,0)
+    UiColor(0,1,0)
+    UiText(GetFloat(key))
+    UiTranslate(-sx,0)
+    UiTranslate(0,sy)
+    UiColor(1,1,1)
+    UiImageBox('ui/common/box-outline-4.png', ((max - min) + 20),20,2,2)
+    UiTranslate(-min)
+    value, done = UiSlider("ui/common/dot.png", axis, (GetFloat(key) or default) * 100, min , max )
+    SetFloat(key, value/100)
+    UiTranslate(0,sy + 20 + 10)
+    UiTranslate(min)
+end
+
+
+
+function drawDebugMenu()
+    --UiEnableInput()
+    UiMakeInteractive()
+    UiPush()
+        UiTranslate(  UiWidth() /2 - dbgMenuWidth/2, UiHeight() /2 - dbgMenuHeight/2)
+        UiColor(0.1,0.1,0.1,0.5)
+ 
+        UiRect(dbgMenuWidth,dbgMenuHeight)
+
+        UiColor(1,1,1,1)
+        UiFont("bold.ttf", 24)
+        UiText('Options')
+        UiFont("bold.ttf", 20)
+        UiTranslate(0,30)
+        UiFont("bold.ttf", 30)
+        UiColor(1,0.5,0.2)
+        drawbutton("Reset Options", defaultValues)
+        if active then
+            UiColor(0,1,0)
+        else
+            UiColor(1,0,0)
+        end
+
+        drawbutton("Airstrike Active", function() active = not active end)
+        drawBoolButton("Automatically start strike at start of level", 'savegame.mod.airstrikeDisableAtMapStart')
+        UiFont("bold.ttf", 20)
+        drawSlider("Range of missile attack", "savegame.mod.airstrikeRange", "x", 100, 400,250 )
+        drawSlider("Start height", "savegame.mod.airstrikeHeight", "x", 0, 600, 300 )
+        drawSliderFloat("Delay", "savegame.mod.airstrikeDelay", "x", 0, 500, 10)
+        --drawSlider("Maximum travel distance (before despawn)", "savegame.mod.airstrikeMaxDistance", "x", 100, GetInt('savegame.mod.airstrikeHeight') * 2, 250 )
+    UiPop()
+end
 
 function draw(dt)
+    if menuActive then
+        if (InputDown('esc')) then
+            menuActive = false
+        end
+        drawDebugMenu()
+
+    end
 end
 
 
